@@ -89,3 +89,18 @@ polish check FILE…          fmt --check + lint
 
 Exit status: 0 clean, 1 findings / would reformat, 2 bad arguments (facet), 70
 internal error.
+
+## v0.1 implementation choices (where this document was silent)
+
+- Columns and the 100-column limit count characters (Unicode scalars), like crushc.
+- Levels: `P-LINE-LEN` is a warning; the other whitespace lints, `P-UNFORMATTED`, `P-LEX`,
+  `P-BRACKET` and `P-IO` are errors. `lint` exits 1 only on errors.
+- Indentation counts distinct *lines* that opened a still-open bracket, so `f(g(` is one
+  level. Expression continuation lines (previous token is a binary operator / this line starts
+  with one of `+ * / % == != && || |> .`) get one extra level.
+- Gaps the rules do not mention are copied from the source, so the formatter is idempotent
+  by construction; this includes spacing before `{`.
+- Unbalanced or mismatched brackets are reported (`P-BRACKET`) and the file is left alone.
+- CRLF is normalised to LF; an empty or whitespace-only file formats to an empty file.
+- `scripts/polish` runs the VM with `--fs-root /` and passes `POLISH_CWD`, so any path works;
+  a VM runtime failure is reported as exit 70.
