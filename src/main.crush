@@ -1,0 +1,131 @@
+// polish CLI, built on facet.  polish fmt|lint|check FILE...
+
+fn __polish_flag(v) {
+    return v == true
+}
+
+// path -> what fs.* should be given.  scripts/polish runs the VM with
+// --fs-root / and exports POLISH_CWD, so any path on the machine works.
+fn polish_io_path(name) {
+    let cwd = env.get("POLISH_CWD")
+    if cwd == null || cwd == "" { return name }
+    if name[0:1] == "/" { return name[1:] }
+    let base = cwd[1:]
+    if base == "" { return path.normalize(name) }
+    return path.normalize(base + "/" + name)
+}
+
+fn polish_json_diag(file, d) {
+    let hint = "null"
+    if d.hint != "" { hint = json.stringify(d.hint) }
+    return "{\"code\":" + json.stringify(d.code) + ",\"level\":" + json.stringify(d.level) + ",\"file\":" + json.stringify(file) + ",\"line\":" + conv.to_str(d.line) + ",\"col\":" + conv.to_str(d.col) + ",\"message\":" + json.stringify(d.message) + ",\"hint\":" + hint + "}"
+}
+
+fn polish_emit(file, d, mf) {
+    if mf == "json" {
+        print(polish_json_diag(file, d))
+        return 0
+    }
+    print(file + ":" + conv.to_str(d.line) + ":" + conv.to_str(d.col) + ": " + d.level + "[" + d.code + "]: " + d.message)
+    if d.hint != "" { print("  hint: " + d.hint) }
+    return 0
+}
+
+// read a file; returns { ok, src }; reports P-IO when unreadable
+fn polish_read(file, mf) {
+    let p = polish_io_path(file)
+    if fs.exists(p) != 1 {
+        polish_emit(file, __polish_finding("P-IO", "error", 1, 1, "cannot read file: no such file", ""), mf)
+        return { ok: false, src: "" }
+    }
+    return { ok: true, src: fs.read(p) }
+}
+
+fn polish_lex_diag(r) {
+    return __polish_finding(r.code, "error", r.err_line, r.err_col, r.err_msg, "the file is left unchanged")
+}
+
+// mode: "fmt" (rewrite), "fmt-check", "stdout", "lint", "check"
+fn polish_run(files, mode, mf) {
+    let status = 0
+    for f in files {
+        let rd = polish_read(f, mf)
+        if !rd.ok {
+            status = 1
+            continue
+        }
+        let src = rd.src
+        if mode == "lint" {
+            let lx = polish_lex(src)
+            if !lx.ok {
+                polish_emit(f, __polish_finding("P-LEX", "error", lx.err_line, lx.err_col, lx.err_msg, ""), mf)
+                status = 1
+                continue
+            }
+            for d in polish_lint(src, lx) {
+                polish_emit(f, d, mf)
+                if d.level == "error" { status = 1 }
+            }
+            continue
+        }
+        let r = polish_format(src)
+        if !r.ok {
+            polish_emit(f, polish_lex_diag(r), mf)
+            status = 1
+            continue
+        }
+        if mode == "stdout" {
+            if r.text != "" { print(r.text[0:__polish_clen(r.text) - 1]) }
+        } else if mode == "fmt" {
+            if r.text != src { fs.write(polish_io_path(f), r.text) }
+        } else {
+            if r.text != src {
+                polish_emit(f, __polish_finding("P-UNFORMATTED", "error", 1, 1, "file would be reformatted", "run `polish fmt`"), mf)
+                status = 1
+            }
+            if mode == "check" {
+                let lx = polish_lex(src)
+                for d in polish_lint(src, lx) {
+                    polish_emit(f, d, mf)
+                    if d.level == "error" { status = 1 }
+                }
+            }
+        }
+    }
+    return status
+}
+
+fn polish_cmd_fmt(spec, args) {
+    if len(args.files) == 0 { facet_fail(spec, "no files given") }
+    let mode = "fmt"
+    if __polish_flag(args.check) { mode = "fmt-check" }
+    if __polish_flag(args.stdout) {
+        if __polish_flag(args.check) { facet_fail(spec, "--check and --stdout cannot be combined") }
+        if len(args.files) != 1 { facet_fail(spec, "--stdout takes exactly one file") }
+        mode = "stdout"
+    }
+    return polish_run(args.files, mode, args.message_format)
+}
+
+fn polish_cmd_lint(spec, args) {
+    if len(args.files) == 0 { facet_fail(spec, "no files given") }
+    return polish_run(args.files, "lint", args.message_format)
+}
+
+fn polish_cmd_check(spec, args) {
+    if len(args.files) == 0 { facet_fail(spec, "no files given") }
+    return polish_run(args.files, "check", args.message_format)
+}
+
+fn main() {
+    let mfopt = { long: "--message-format", type: "str", default: "text", choices: ["text", "json"], help: "diagnostic format" }
+    let files = { name: "files", repeat: true, required: true, help: "Crush source files" }
+    let fmt = { name: "fmt", help: "format files (rewrites in place)", flags: [{ long: "--check", help: "do not write; exit 1 and report files that would change" }, { long: "--stdout", help: "print the formatted file instead of writing it" }], options: [mfopt], positionals: [files] }
+    let lint = { name: "lint", help: "token-level lints", options: [mfopt], positionals: [files] }
+    let check = { name: "check", help: "fmt --check plus lint", options: [mfopt], positionals: [files] }
+    let spec = { name: "polish", version: "0.1.0", about: "A formatter and linter for Crush, written in Crush.", subcommands: [fmt, lint, check] }
+    let status = 0
+    let handlers = { fmt: |args| => polish_cmd_fmt(spec, args), lint: |args| => polish_cmd_lint(spec, args), check: |args| => polish_cmd_check(spec, args) }
+    status = facet_run(spec, handlers)
+    if status != 0 { sys.exit(status) }
+}

@@ -1,0 +1,187 @@
+// polish self test: lexer, formatter rules, idempotency, lints, golden files.
+// Built by scripts/test.sh: src/lexer + src/fmt + src/lint + this file.
+// Run from the repository root (goldens are read from tests/fmt).
+
+fn check(name, cond) {
+    if cond {
+        print("ok " + name)
+        return 0
+    }
+    print("FAIL " + name)
+    return 1
+}
+
+// "k:t k:t ..." for every token but the final eof
+fn kinds(src) {
+    let r = polish_lex(src)
+    if !r.ok { return "ERR " + r.err_msg + "@" + conv.to_str(r.err_line) + ":" + conv.to_str(r.err_col) }
+    let parts = []
+    for t in r.toks {
+        if t.k != "eof" { parts.push(t.k + ":" + t.t) }
+    }
+    return str.join(parts, " ")
+}
+
+fn fmt_(src) {
+    let r = polish_format(src)
+    if !r.ok { return "ERR " + r.err_msg + "@" + conv.to_str(r.err_line) + ":" + conv.to_str(r.err_col) }
+    return r.text
+}
+
+fn codes(src) {
+    let lx = polish_lex(src)
+    let parts = []
+    for d in polish_lint(src, lx) { parts.push(d.code + "@" + conv.to_str(d.line) + ":" + conv.to_str(d.col)) }
+    return str.join(parts, " ")
+}
+
+// formatted text equals expected, and formatting it again changes nothing
+fn rule(name, input, expected) {
+    let f = fmt_(input)
+    let fails = check(name, f == expected)
+    if f != expected {
+        print("  got:  " + json.stringify(f))
+        print("  want: " + json.stringify(expected))
+    }
+    fails = fails + check(name + " (idempotent)", fmt_(f) == f)
+    return fails
+}
+
+fn main() {
+    let fails = 0
+
+    // ---- lexer: every token kind ----
+    fails = fails + check("lex idents+keywords", kinds("let x = fn") == "kw:let id:x op:= kw:fn")
+    fails = fails + check("lex alias keywords", kinds("manau karya yadi natra") == "kw:manau kw:karya kw:yadi kw:natra")
+    fails = fails + check("lex word operators", kinds("a and b or not c") == "id:a kw:and id:b kw:or kw:not id:c")
+    fails = fails + check("lex literals", kinds("true false null") == "kw:true kw:false kw:null")
+    fails = fails + check("lex numbers", kinds("1 2.5 0xFF 0b101 0X1f") == "num:1 num:2.5 num:0xFF num:0b101 num:0X1f")
+    fails = fails + check("lex int dot ident", kinds("1.x") == "num:1 op:. id:x")
+    fails = fails + check("lex range", kinds("0..n 1..=2") == "num:0 op:.. id:n num:1 op:..= num:2")
+    fails = fails + check("lex strings", kinds("\"a b\" 'c'") == "str:\"a b\" str:'c'")
+    fails = fails + check("lex string escapes", kinds("\"a\\\"b\" 'it\\'s'") == "str:\"a\\\"b\" str:'it\\'s'")
+    fails = fails + check("lex comment //", kinds("x // hi there\ny") == "id:x cm:// hi there nl:\n id:y")
+    fails = fails + check("lex comment #", kinds("# note\n") == "cm:# note nl:\n")
+    fails = fails + check("lex operators", kinds("+ - * / % == != <= >= < > && || ! = |> | -> => :: ..") == "op:+ op:- op:* op:/ op:% op:== op:!= op:<= op:>= op:< op:> op:&& op:|| op:! op:= op:|> op:| op:-> op:=> op::: op:..")
+    fails = fails + check("lex punctuation", kinds("( ) { } [ ] , : ; . ?") == "op:( op:) op:{ op:} op:[ op:] op:, op:: op:; op:. op:?")
+    fails = fails + check("lex lambda", kinds("|a| a") == "op:| id:a op:| id:a")
+    fails = fails + check("lex annotation", kinds("@module { x }") == "at:@module op:{ id:x op:}")
+    fails = fails + check("lex import-ish @", kinds("@mcp foo") == "at:@mcp id:foo")
+    fails = fails + check("lex @ without block", kinds("@python x") == "at:@python id:x")
+    fails = fails + check("lex lang block raw", kinds("@python { a = {1} } x") == "lang:@python { a = {1} } id:x")
+    fails = fails + check("lex lang header", kinds("@python[pypi:numpy@1.26] -> (a, b) { 1 }") == "lang:@python[pypi:numpy@1.26] -> (a, b) { 1 }")
+    fails = fails + check("lex lang brace in string", kinds("@bash { echo \"}\" } z") == "lang:@bash { echo \"}\" } id:z")
+    fails = fails + check("lex lang triple quote", kinds("@python { s = '''}''' } z") == "lang:@python { s = '''}''' } id:z")
+    fails = fails + check("lex unicode ident", kinds("héllo = 1") == "id:héllo op:= num:1")
+
+    // ---- lexer: positions, whitespace, spans ----
+    let r = polish_lex("ab  cd\n  é = 1")
+    fails = fails + check("pos ab", r.toks[0].line == 1 && r.toks[0].col == 1)
+    fails = fails + check("pos cd", r.toks[1].col == 5 && r.toks[1].ws == "  ")
+    fails = fails + check("pos nl", r.toks[2].k == "nl" && r.toks[2].col == 7)
+    fails = fails + check("pos line 2", r.toks[3].line == 2 && r.toks[3].col == 3 && r.toks[3].ws == "  ")
+    fails = fails + check("pos counts chars not bytes", r.toks[4].col == 5)
+    let m = polish_lex("let s = \"a\nb\"\nlet t = 1")
+    fails = fails + check("multi-line string span", len(m.spans) == 1 && m.spans[0][0] == 1 && m.spans[0][1] == 2)
+    let q = polish_lex("x\n@python {\n  y\n}\nz")
+    fails = fails + check("lang block span", len(q.spans) == 1 && q.spans[0][0] == 2 && q.spans[0][1] == 4)
+    fails = fails + check("pos after lang block", q.toks[len(q.toks) - 2].line == 5)
+
+    // ---- lexer: errors ----
+    fails = fails + check("lex err unterminated string", kinds("x = \"abc") == "ERR unterminated string@1:5")
+    fails = fails + check("lex err unexpected char", kinds("a\nb $") == "ERR unexpected character: $@2:3")
+    fails = fails + check("lex err bad hex", kinds("0x") == "ERR invalid number@1:1")
+    fails = fails + check("lex err unterminated polyglot", kinds("@python { oops") == "ERR unterminated polyglot block@1:1")
+    fails = fails + check("lex err bare @", kinds("@ x") == "ERR expected identifier after @@1:2")
+
+    // ---- formatter rules ----
+    fails = fails + rule("indent 4 spaces", "fn f() {\nlet x = 1\n  if x {\n return x\n}\n}\n", "fn f() {\n    let x = 1\n    if x {\n        return x\n    }\n}\n")
+    fails = fails + rule("tabs to spaces", "fn f() {\n\tlet x = 1\n}\n", "fn f() {\n    let x = 1\n}\n")
+    fails = fails + rule("trailing whitespace", "let x = 1  \nlet y = 2\t\n", "let x = 1\nlet y = 2\n")
+    fails = fails + rule("crlf", "let x = 1\r\nlet y = 2\r\n", "let x = 1\nlet y = 2\n")
+    fails = fails + rule("blank lines collapse", "a\n\n\n\nb\n", "a\n\nb\n")
+    fails = fails + rule("no blank after open brace", "fn f() {\n\n    x\n}\n", "fn f() {\n    x\n}\n")
+    fails = fails + rule("no blank before close brace", "fn f() {\n    x\n\n}\n", "fn f() {\n    x\n}\n")
+    fails = fails + rule("no leading blank lines", "\n\n  \nlet x = 1\n", "let x = 1\n")
+    fails = fails + rule("final newline added", "let x = 1", "let x = 1\n")
+    fails = fails + rule("final blank lines removed", "let x = 1\n\n\n", "let x = 1\n")
+    fails = fails + rule("empty file", "", "")
+    fails = fails + rule("whitespace-only file", "  \n\n", "")
+    fails = fails + rule("space after comma", "f(a,b ,c)\n", "f(a, b, c)\n")
+    fails = fails + rule("no space inside parens", "f( a, b )\ng( )\n", "f(a, b)\ng()\n")
+    fails = fails + rule("no space inside brackets", "let a = [ 1, 2 ]\n", "let a = [1, 2]\n")
+    fails = fails + rule("trailing comma before bracket", "let a = [1, 2, ]\n", "let a = [1, 2,]\n")
+    fails = fails + rule("fn name paren", "fn add (a, b) {\n}\n", "fn add(a, b) {\n}\n")
+    fails = fails + rule("call paren", "print (x)\n", "print(x)\n")
+    fails = fails + rule("keyword paren kept", "if (x) {\n}\nwhile (y) {\n}\n", "if (x) {\n}\nwhile (y) {\n}\n")
+    fails = fails + rule("let assign spacing", "let x=1\nlet  y   =2\n", "let x = 1\nlet  y = 2\n")
+    fails = fails + rule("binary operators", "let z=a+b*c-d/e%f\nif a==b&&c!=d||e<=f {\n}\nif a>=b {\n}\n", "let z = a + b * c - d / e % f\nif a == b && c != d || e <= f {\n}\nif a >= b {\n}\n")
+    fails = fails + rule("unary minus untouched", "let a = -1\nlet b = x - -1\nf(-2, -x)\nlet c = [-1, -2]\n", "let a = -1\nlet b = x - -1\nf(-2, -x)\nlet c = [-1, -2]\n")
+    fails = fails + rule("minus after paren is binary", "let a = (b)-1\n", "let a = (b) - 1\n")
+    fails = fails + rule("return minus is unary", "return -1\n", "return -1\n")
+    fails = fails + rule("range untouched", "for i in 0..n {\n}\nfor j in 0..=n {\n}\n", "for i in 0..n {\n}\nfor j in 0..=n {\n}\n")
+    fails = fails + rule("lambda bars untouched", "let f = |a, b| => a+b\nlet g = |x| => -x\n", "let f = |a, b| => a + b\nlet g = |x| => -x\n")
+    fails = fails + rule("empty lambda or", "let f = || => 1\n", "let f = || => 1\n")
+    fails = fails + rule("unknown spacing kept", "let m = {a:1,   b : 2}\n", "let m = {a:1, b : 2}\n")
+    fails = fails + rule("comment indentation", "fn f() {\n// c\nlet x = 1\n        # d\n}\n", "fn f() {\n    // c\n    let x = 1\n    # d\n}\n")
+    fails = fails + rule("trailing comment kept", "let x = 1   // keep\nlet y = 2// glue\n", "let x = 1   // keep\nlet y = 2 // glue\n")
+    fails = fails + rule("comment text untouched", "//   spaced   text  \n", "//   spaced   text\n")
+    fails = fails + rule("else on close line", "if a {\nx\n} else {\ny\n}\n", "if a {\n    x\n} else {\n    y\n}\n")
+    fails = fails + rule("multi-line call continuation", "f(a,\nb,\nc)\n", "f(a,\n    b,\n    c)\n")
+    fails = fails + rule("opener at line end", "let m = f(\na,\nb\n)\n", "let m = f(\n    a,\n    b\n)\n")
+    fails = fails + rule("two openers one level", "f(g(\nx\n))\n", "f(g(\n    x\n))\n")
+    fails = fails + rule("closure body", "let f = foo(|a| => {\nbody\n})\n", "let f = foo(|a| => {\n    body\n})\n")
+    fails = fails + rule("operator continuation", "let x = a +\nb\n", "let x = a +\n    b\n")
+    fails = fails + rule("leading operator continuation", "let x = a\n&& b\n", "let x = a\n    && b\n")
+    fails = fails + rule("method chain", "x\n.a()\n.b()\n", "x\n    .a()\n    .b()\n")
+    fails = fails + rule("string untouched", "let s = \"a   ,b  \"\n", "let s = \"a   ,b  \"\n")
+    fails = fails + rule("multi-line string untouched", "let s = \"a  \n   b  \"  \nlet t = 1\n", "let s = \"a  \n   b  \"\nlet t = 1\n")
+    fails = fails + rule("polyglot body untouched", "fn f() {\n@python -> r {\n    x=1\t \n\n\n  r =  x\n}\nlet z=1\n}\n", "fn f() {\n    @python -> r {\n    x=1\t \n\n\n  r =  x\n}\n    let z = 1\n}\n")
+    fails = fails + rule("alias keywords", "karya f() {\nmanau x=1\n}\n", "karya f() {\n    manau x = 1\n}\n")
+    fails = fails + rule("struct/annotation", "@module {\nname: \"x\"\n}\n", "@module {\n    name: \"x\"\n}\n")
+
+    // ---- formatter: bad input is reported, not changed ----
+    fails = fails + check("fmt reports lex error", fmt_("let x = \"abc") == "ERR unterminated string@1:9")
+    fails = fails + check("fmt reports unmatched close", fmt_("a )\n") == "ERR unmatched `)`@1:3")
+    fails = fails + check("fmt reports mismatched close", fmt_("( ]\n") == "ERR mismatched `]`@1:3")
+    fails = fails + check("fmt reports unclosed", fmt_("f(\n") == "ERR unclosed `(`@1:2")
+
+    // ---- lints ----
+    fails = fails + check("lint clean", codes("let x = 1\n") == "")
+    fails = fails + check("lint trailing ws", codes("let x = 1  \n") == "P-TRAILING-WS@1:10")
+    fails = fails + check("lint trailing ws ignored in string", codes("let s = \"a  \n b\"\n") == "")
+    fails = fails + check("lint tab", codes("fn f() {\n\tx\n}\n") == "P-TAB@2:1")
+    fails = fails + check("lint tab inside string ignored", codes("let s = \"a\n\tb\"\n") == "")
+    fails = fails + check("lint line len", codes("let x = \"" + str.repeat("a", 100) + "\"\n") == "P-LINE-LEN@1:101")
+    fails = fails + check("lint line len exact 100 ok", codes("let x = \"" + str.repeat("a", 90) + "\"\n") == "")
+    fails = fails + check("lint blank lines", codes("a\n\n\nb\n") == "P-BLANK-LINES@3:1")
+    fails = fails + check("lint blank lines in string ignored", codes("let s = \"a\n\n\nb\"\n") == "")
+    fails = fails + check("lint missing final newline", codes("let x = 1") == "P-FINAL-NEWLINE@1:10")
+    fails = fails + check("lint extra final newline", codes("let x = 1\n\n") == "P-FINAL-NEWLINE@2:1")
+    fails = fails + check("lint empty file", codes("") == "")
+    fails = fails + check("lint severities", polish_lint("let x = \"" + str.repeat("a", 100) + "\"  \n", polish_lex("let x = 1"))[0].level == "warning")
+
+    // ---- golden files ----
+    let names = fs.list("tests/fmt")
+    let n_gold = 0
+    for name in names {
+        if str.ends_with(name, ".in.crush") {
+            let stem = name[0:len(str.split(name, "")) - 9]
+            let src = fs.read("tests/fmt/" + name)
+            let want = fs.read("tests/fmt/" + stem + ".out.crush")
+            let got = fmt_(src)
+            n_gold = n_gold + 1
+            fails = fails + check("golden " + stem, got == want)
+            fails = fails + check("golden " + stem + " (idempotent)", fmt_(want) == want)
+        }
+    }
+    fails = fails + check("goldens found", n_gold >= 3)
+
+    print("")
+    if fails == 0 {
+        print("polish tests: all passed")
+    } else {
+        print("polish tests: " + conv.to_str(fails) + " FAILED")
+        sys.exit(1)
+    }
+}

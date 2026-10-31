@@ -1,0 +1,101 @@
+// polish lints (v0.1, token level). Each finding:
+//   { code, level, line, col, message, hint }
+
+fn __polish_clen(s) {
+    if s == "" { return 0 }
+    return len(str.split(s, ""))
+}
+
+fn __polish_finding(code, level, line, col, message, hint) {
+    return { code: code, level: level, line: line, col: col, message: message, hint: hint }
+}
+
+fn __polish_is_ws_char(ch) {
+    return ch == " " || ch == "\t" || ch == "\r"
+}
+
+// polish_lint(src, lx) -> findings, in source order.  lx = polish_lex(src), ok.
+fn polish_lint(src, lx) {
+    let found = []
+    if src == "" { return found }
+    let pieces = str.split(src, "\n")
+    let np = len(pieces)
+    // the last piece is "" when the source ends with a newline: not a line
+    let nl = np
+    if pieces[np - 1] == "" { nl = np - 1 }
+
+    let starts_raw = []
+    let ends_raw = []
+    let i = 0
+    while i < nl + 3 {
+        starts_raw.push(false)
+        ends_raw.push(false)
+        i = i + 1
+    }
+    for sp in lx.spans {
+        for l in sp[0]..sp[1] {
+            ends_raw[l] = true
+            starts_raw[l + 1] = true
+        }
+    }
+
+    // last line with something on it
+    let last_nonblank = 0
+    let l = 1
+    while l <= nl {
+        let cs = str.split(pieces[l - 1], "")
+        let blank = true
+        for ch in cs {
+            if !__polish_is_ws_char(ch) { blank = false }
+        }
+        if !blank || starts_raw[l] { last_nonblank = l }
+        l = l + 1
+    }
+
+    let prev_blank = false
+    l = 1
+    while l <= nl {
+        let text = pieces[l - 1]
+        let cs = str.split(text, "")
+        let n = len(cs)
+        let t = 0
+        while t < n && __polish_is_ws_char(cs[n - 1 - t]) { t = t + 1 }
+        let blank = (t == n)
+        if !starts_raw[l] {
+            if !blank {
+                let k = 0
+                while k < n && __polish_is_ws_char(cs[k]) && cs[k] != "\r" {
+                    if cs[k] == "\t" {
+                        found.push(__polish_finding("P-TAB", "error", l, k + 1, "tab used for indentation", "polish fmt indents with 4 spaces"))
+                        break
+                    }
+                    k = k + 1
+                }
+                let width = n
+                if cs[n - 1] == "\r" { width = n - 1 }
+                if width > 100 {
+                    found.push(__polish_finding("P-LINE-LEN", "warning", l, 101, "line is " + conv.to_str(width) + " columns (max 100)", "polish never reflows; split it by hand"))
+                }
+            }
+            if blank && prev_blank && l < last_nonblank {
+                found.push(__polish_finding("P-BLANK-LINES", "error", l, 1, "more than one blank line in a row", "polish fmt keeps at most one"))
+            }
+            prev_blank = blank
+        } else {
+            prev_blank = false
+        }
+        if t > 0 && !ends_raw[l] {
+            found.push(__polish_finding("P-TRAILING-WS", "error", l, n - t + 1, "trailing whitespace", "polish fmt removes it"))
+        }
+        l = l + 1
+    }
+
+    // final newline
+    let lastch = str.split(src, "")
+    if lastch[len(lastch) - 1] != "\n" {
+        found.push(__polish_finding("P-FINAL-NEWLINE", "error", nl, __polish_clen(pieces[np - 1]) + 1, "missing newline at end of file", "polish fmt adds it"))
+    } else if last_nonblank < nl {
+        found.push(__polish_finding("P-FINAL-NEWLINE", "error", last_nonblank + 1, 1, "extra blank line(s) at end of file", "polish fmt leaves exactly one final newline"))
+    }
+    return found
+}

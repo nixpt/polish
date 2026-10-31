@@ -1,0 +1,9 @@
+fn main() {
+let s = "keep   this  ,  string"
+@python -> total {
+    xs = [1,2,3]
+	total = sum( xs )   
+}
+@javascript[npm:left-pad@1.3.0] { const o = {a:1,  b:2}; console.log("}") }
+print(  total  )
+}

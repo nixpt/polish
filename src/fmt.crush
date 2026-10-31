@@ -1,0 +1,213 @@
+// polish formatter: token stream -> formatted text. Whitespace only: tokens
+// are never added, removed, reordered or edited, so the program cannot change.
+
+fn __polish_is_op(tok, text) {
+    return tok.k == "op" && tok.t == text
+}
+
+fn __polish_is_closer(tok) {
+    return tok.k == "op" && (tok.t == ")" || tok.t == "]" || tok.t == "}")
+}
+
+fn __polish_is_opener(tok) {
+    return tok.k == "op" && (tok.t == "(" || tok.t == "[" || tok.t == "{")
+}
+
+fn __polish_closer_of(t) {
+    if t == "(" { return ")" }
+    if t == "[" { return "]" }
+    return "}"
+}
+
+// can this token end an operand (so a following `-` / `=` is binary)?
+fn __polish_ends_operand(tok) {
+    if tok.k == "id" || tok.k == "num" || tok.k == "str" { return true }
+    if tok.k == "kw" { return tok.c == "true" || tok.c == "false" || tok.c == "null" }
+    if tok.k == "op" { return tok.t == ")" || tok.t == "]" }
+    return false
+}
+
+// operators that get one space on each side when clearly binary
+fn __polish_spaced_op(t) {
+    return collections.includes(["==", "!=", "<=", ">=", "&&", "||", "+", "-", "*", "/", "%", "="], t)
+}
+
+// ops/words after which the next line continues the expression
+fn __polish_cont_end(tok) {
+    if tok.k == "op" { return collections.includes(["=", "+", "-", "*", "/", "%", "==", "!=", "<", ">", "<=", ">=", "&&", "||", "|>", "=>", "."], tok.t) }
+    if tok.k == "kw" { return tok.c == "and" || tok.c == "or" }
+    return false
+}
+
+// ops that cannot start a statement: a line beginning with one continues the expression
+fn __polish_cont_start(tok) {
+    if tok.k == "op" { return collections.includes(["+", "*", "/", "%", "==", "!=", "&&", "||", "|>", "."], tok.t) }
+    if tok.k == "kw" { return tok.c == "and" || tok.c == "or" }
+    return false
+}
+
+// mark binary operators: tok.bin = true when the operator is clearly binary
+fn __polish_classify(toks) {
+    let prev = null
+    let have = false
+    for tok in toks {
+        if tok.k == "cm" || tok.k == "nl" || tok.k == "eof" { continue }
+        tok.bin = false
+        if tok.k == "op" && __polish_spaced_op(tok.t) && have {
+            tok.bin = __polish_ends_operand(prev)
+        }
+        prev = tok
+        have = true
+    }
+    return 0
+}
+
+// the whitespace between two tokens on one line
+fn __polish_gap(prev, cur) {
+    if cur.k == "cm" {
+        if cur.ws == "" { return " " }
+        return cur.ws
+    }
+    if prev.k == "op" && prev.t == "," {
+        if __polish_is_op(cur, ")") || __polish_is_op(cur, "]") { return "" }
+        if __polish_is_op(cur, "}") { return cur.ws }
+        return " "
+    }
+    if __polish_is_op(cur, ",") { return "" }
+    if __polish_is_op(cur, ")") || __polish_is_op(cur, "]") { return "" }
+    if __polish_is_op(prev, "(") || __polish_is_op(prev, "[") { return "" }
+    if __polish_is_op(cur, "(") {
+        if prev.k == "id" { return "" }
+        if prev.k == "kw" && prev.c == "fn" { return "" }
+    }
+    if cur.k == "op" && cur.bin { return " " }
+    if prev.k == "op" && prev.bin { return " " }
+    return cur.ws
+}
+
+fn __polish_rtrim(s) {
+    let cs = str.split(s, "")
+    let n = len(cs)
+    while n > 0 && (cs[n - 1] == " " || cs[n - 1] == "\t" || cs[n - 1] == "\r") { n = n - 1 }
+    return str.join(cs[0:n], "")
+}
+
+fn __polish_fail(tok, msg) {
+    return { ok: false, text: "", err_line: tok.line, err_col: tok.col, err_msg: msg, code: "P-BRACKET" }
+}
+
+// fmt(src) -> { ok, text, err_line, err_col, err_msg, code }
+fn polish_format(src) {
+    let lx = polish_lex(src)
+    if !lx.ok {
+        return { ok: false, text: "", err_line: lx.err_line, err_col: lx.err_col, err_msg: lx.err_msg, code: "P-LEX" }
+    }
+    let toks = lx.toks
+    __polish_classify(toks)
+
+    // split into logical lines
+    let lines = []
+    let cur = []
+    for tok in toks {
+        if tok.k == "nl" {
+            lines.push(cur)
+            cur = []
+        } else if tok.k == "eof" {
+            lines.push(cur)
+        } else {
+            cur.push(tok)
+        }
+    }
+
+    let out = []
+    let blank = 0
+    let prev_last = null        // last non-comment token of the previous emitted line
+    let prev_sig = null         // last non-comment token seen anywhere
+    let stack_id = []
+    let stack_t = []
+    let stack_tok = []
+    let sp = 0                  // stack height
+    let lvl = 0                 // distinct opener lines on the stack
+    let line_id = 0
+    for lt in lines {
+        line_id = line_id + 1
+        let nt = len(lt)
+        if nt == 0 {
+            blank = blank + 1
+            continue
+        }
+        // leading closers
+        let k = 0
+        while k < nt && __polish_is_closer(lt[k]) {
+            if sp == 0 { return __polish_fail(lt[k], "unmatched `" + lt[k].t + "`") }
+            if stack_t[sp - 1] != lt[k].t {
+                return __polish_fail(lt[k], "mismatched `" + lt[k].t + "`")
+            }
+            let popped = stack_id[sp - 1]
+            sp = sp - 1
+            if sp == 0 || stack_id[sp - 1] != popped { lvl = lvl - 1 }
+            k = k + 1
+        }
+        let level = lvl
+        let first = lt[0]
+        if first.k != "cm" && k == 0 && prev_sig != null {
+            if __polish_cont_end(prev_sig) || __polish_cont_start(first) { level = level + 1 }
+        }
+        // blank lines
+        if len(out) > 0 && blank > 0 {
+            let after_open = prev_last != null && __polish_is_op(prev_last, "{")
+            let before_close = __polish_is_op(first, "}")
+            if !after_open && !before_close { out.push("") }
+        }
+        blank = 0
+        // emit
+        let parts = [str.repeat(" ", 4 * level)]
+        let j = 0
+        let pt = null
+        while j < nt {
+            let tok = lt[j]
+            if j > 0 { parts.push(__polish_gap(pt, tok)) }
+            if tok.k == "cm" { parts.push(__polish_rtrim(tok.t)) } else { parts.push(tok.t) }
+            if j >= k && __polish_is_closer(tok) {
+                if sp == 0 { return __polish_fail(tok, "unmatched `" + tok.t + "`") }
+                if stack_t[sp - 1] != tok.t { return __polish_fail(tok, "mismatched `" + tok.t + "`") }
+                let popped = stack_id[sp - 1]
+                sp = sp - 1
+                if sp == 0 || stack_id[sp - 1] != popped { lvl = lvl - 1 }
+            }
+            if __polish_is_opener(tok) {
+                let want = __polish_closer_of(tok.t)
+                if sp < len(stack_id) {
+                    stack_id[sp] = line_id
+                    stack_t[sp] = want
+                    stack_tok[sp] = tok
+                } else {
+                    stack_id.push(line_id)
+                    stack_t.push(want)
+                    stack_tok.push(tok)
+                }
+                if sp == 0 || stack_id[sp - 1] != line_id { lvl = lvl + 1 }
+                sp = sp + 1
+            }
+            pt = tok
+            j = j + 1
+        }
+        out.push(str.join(parts, ""))
+        // bookkeeping for the next line
+        let m = nt - 1
+        while m >= 0 && lt[m].k == "cm" { m = m - 1 }
+        if m >= 0 {
+            prev_last = lt[m]
+            prev_sig = lt[m]
+        } else {
+            prev_last = prev_last
+        }
+    }
+    if sp > 0 {
+        // find an opener position: report at EOF-ish
+        let ot = stack_tok[sp - 1]
+        return { ok: false, text: "", err_line: ot.line, err_col: ot.col, err_msg: "unclosed `" + ot.t + "`", code: "P-BRACKET" }
+    }
+    if len(out) == 0 { return { ok: true, text: "", err_line: 0, err_col: 0, err_msg: "", code: "" } }
+    return { ok: true, text: str.join(out, "\n") + "\n", err_line: 0, err_col: 0, err_msg: "", code: "" }
+}
