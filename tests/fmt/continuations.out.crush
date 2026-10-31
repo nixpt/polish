@@ -1,0 +1,20 @@
+fn main() {
+    let total = 1 +
+        2 +
+        3
+    let ok = a
+        && b
+        || c
+    let r = items
+        .filter(|x| => x>0)
+        .map(|x| => x * 2)
+    let m = compute(first,
+        second,
+        third)
+    call(|a| => {
+        body(a)
+    })
+    if x {
+        // only a comment
+    }
+}

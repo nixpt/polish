@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Run polish on the Crush VM.  Needs crush-run on PATH (or CRUSH_RUN=).
+# Exit: 0 clean, 1 findings, 2 bad arguments, 70 internal error / VM failure.
+set -uo pipefail
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+[ -f "$HERE/build/polish.crush" ] || "$HERE/scripts/build.sh" >&2 || exit 70
+CRUSH_RUN="${CRUSH_RUN:-crush-run}"
+ERR="$(mktemp)"
+trap 'rm -f "$ERR"' EXIT
+POLISH_CWD="$PWD" timeout "${POLISH_TIMEOUT:-600}" "$CRUSH_RUN" run --fs --fs-root / --env \
+    --max-steps "${POLISH_MAX_STEPS:-4000000000}" \
+    "$HERE/build/polish.crush" -- "$@" < /dev/null 2> "$ERR"
+rc=$?
+grep -v '^\[steps=' "$ERR" > "$ERR.f" || true
+mv "$ERR.f" "$ERR"
+if [ -s "$ERR" ]; then
+    cat "$ERR" >&2
+    # the VM reports runtime failures as exit 1 with a message on stderr
+    if [ "$rc" -eq 1 ]; then rc=70; fi
+fi
+[ "$rc" -eq 124 ] && rc=70
+exit "$rc"
