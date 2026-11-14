@@ -22,7 +22,7 @@ polish `import`s facet (`import facet { facet_run, facet_fail }`); its own `src/
 files share `__polish_*` helpers, so `scripts/build.sh` still concatenates those.
 `FACET_DIR` (the directory holding `facet.crush`, default `../facet`) picks the facet checkout;
 `scripts/polish` runs the result with `crush-run run -L <facet dir> --fs --fs-root / --env`
-(needs a facet with required-positional support, facet >= 0.3; any path on the machine works; relative paths are taken from your working directory).
+(needs a facet with required-positional support, facet >= 0.2.1; any path on the machine works; relative paths are taken from your working directory).
 
 ```
 $ polish check messy.crush
