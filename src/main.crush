@@ -96,7 +96,6 @@ fn polish_run(files, mode, mf) {
 }
 
 fn polish_cmd_fmt(spec, args) {
-    if len(args.files) == 0 { facet_fail(spec, "no files given") }
     let mode = "fmt"
     if __polish_flag(args.check) { mode = "fmt-check" }
     if __polish_flag(args.stdout) {
@@ -108,12 +107,10 @@ fn polish_cmd_fmt(spec, args) {
 }
 
 fn polish_cmd_lint(spec, args) {
-    if len(args.files) == 0 { facet_fail(spec, "no files given") }
     return polish_run(args.files, "lint", args.message_format)
 }
 
 fn polish_cmd_check(spec, args) {
-    if len(args.files) == 0 { facet_fail(spec, "no files given") }
     return polish_run(args.files, "check", args.message_format)
 }
 
