@@ -72,9 +72,8 @@ polish/
   scripts/corpus.sh  format crush-ast's .crush corpus and prove CASM equality + idempotency
 ```
 
-Crush has no source-level imports yet (crush-ast CRUSH-110, in progress), so until
-it lands the files are concatenated by `scripts/build.sh`, exactly as facet is
-consumed today.
+polish's own files share `__polish_*` helpers, so `scripts/build.sh` concatenates them;
+facet is `import`ed (`crush-run run -L <facet dir>`).
 
 ## CLI
 

@@ -9,7 +9,7 @@ Its command line is built with [facet](https://github.com/nixpt/facet). Needs cr
 ## Usage
 
 ```sh
-FACET=../facet/facet.crush scripts/build.sh      # concatenates facet + src/*.crush -> build/polish.crush
+scripts/build.sh                                  # import facet + src/*.crush -> build/polish.crush (FACET_DIR=, default ../facet)
 scripts/polish fmt FILE...                        # rewrite files in place
 scripts/polish fmt --check FILE...                # exit 1, list files that would change (CI)
 scripts/polish fmt --stdout FILE                  # print the formatted file
@@ -18,9 +18,11 @@ scripts/polish check FILE...                      # fmt --check + lint
     --message-format text|json                    # json = crush-diagnostics records, one per line
 ```
 
-Crush has no source-level imports yet (CRUSH-110), so `scripts/build.sh` concatenates
-the files; `scripts/polish` runs the result with `crush-run run --fs --fs-root / --env`
-(any path on the machine works; relative paths are taken from your working directory).
+polish `import`s facet (`import facet { facet_run, facet_fail }`); its own `src/*.crush`
+files share `__polish_*` helpers, so `scripts/build.sh` still concatenates those.
+`FACET_DIR` (the directory holding `facet.crush`, default `../facet`) picks the facet checkout;
+`scripts/polish` runs the result with `crush-run run -L <facet dir> --fs --fs-root / --env`
+(needs a facet with required-positional support, facet >= 0.3; any path on the machine works; relative paths are taken from your working directory).
 
 ```
 $ polish check messy.crush
@@ -92,7 +94,7 @@ A file that does not lex, or whose brackets do not balance, is reported
 ## Tests
 
 ```sh
-FACET=../facet/facet.crush scripts/build.sh
+scripts/build.sh          # FACET_DIR=/path/to/facet to use another checkout
 scripts/test.sh          # Crush self test (lexer, rules, idempotency, lints, tests/fmt goldens) + CLI tests
 scripts/corpus.sh DIR... # CASM-identical + idempotent proof over a corpus of .crush files
 ```
