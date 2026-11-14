@@ -4,6 +4,11 @@ All notable changes to polish. Format: [Keep a Changelog](https://keepachangelog
 
 ## [Unreleased]
 
+### Added
+- `capsule.toml`: polish as a crush-pkg package (entry `src/main.crush`, dependency facet at `../facet`,
+  capabilities `env.get`, `fs.exists`, `fs.read`, `fs.write`). `crush-pkg check` passes and
+  `crush-pkg run -- --version` prints `polish 0.1.0`. A registry can now see the facet dependency.
+
 ### Changed
 - polish's own modules are now imported too, not concatenated: `src/fmt.crush` and
   `src/lint.crush` import `lexer`, `src/main.crush` imports `fmt`, `lexer` and `lint`,
