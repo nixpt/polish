@@ -3,11 +3,13 @@
 # Exit: 0 clean, 1 findings, 2 bad arguments, 70 internal error / VM failure.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-[ -f "$HERE/build/polish.crush" ] || "$HERE/scripts/build.sh" >&2 || exit 70
+[ -f "$HERE/build/polish.crush" ] && [ -f "$HERE/build/facet.dir" ] || "$HERE/scripts/build.sh" >&2 || exit 70
 CRUSH_RUN="${CRUSH_RUN:-crush-run}"
+# facet is imported: FACET_DIR= overrides the directory recorded by scripts/build.sh
+FACET_DIR="${FACET_DIR:-$(cat "$HERE/build/facet.dir")}"
 ERR="$(mktemp)"
 trap 'rm -f "$ERR"' EXIT
-POLISH_CWD="$PWD" timeout "${POLISH_TIMEOUT:-600}" "$CRUSH_RUN" run --fs --fs-root / --env \
+POLISH_CWD="$PWD" timeout "${POLISH_TIMEOUT:-600}" "$CRUSH_RUN" run -L "$FACET_DIR" --fs --fs-root / --env \
     --max-steps "${POLISH_MAX_STEPS:-4000000000}" \
     "$HERE/build/polish.crush" -- "$@" < /dev/null 2> "$ERR"
 rc=$?
