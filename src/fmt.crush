@@ -1,3 +1,5 @@
+import lexer { polish_lex }
+
 // polish formatter: token stream -> formatted text. Whitespace only: tokens
 // are never added, removed, reordered or edited, so the program cannot change.
 

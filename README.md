@@ -9,7 +9,7 @@ Its command line is built with [facet](https://github.com/nixpt/facet). Needs cr
 ## Usage
 
 ```sh
-scripts/build.sh                                  # import facet + src/*.crush -> build/polish.crush (FACET_DIR=, default ../facet)
+scripts/build.sh                                  # compile check + record the facet dir (FACET_DIR=, default ../facet)
 scripts/polish fmt FILE...                        # rewrite files in place
 scripts/polish fmt --check FILE...                # exit 1, list files that would change (CI)
 scripts/polish fmt --stdout FILE                  # print the formatted file
@@ -18,10 +18,11 @@ scripts/polish check FILE...                      # fmt --check + lint
     --message-format text|json                    # json = crush-diagnostics records, one per line
 ```
 
-polish `import`s facet (`import facet { facet_run, facet_fail }`); its own `src/*.crush`
-files share `__polish_*` helpers, so `scripts/build.sh` still concatenates those.
-`FACET_DIR` (the directory holding `facet.crush`, default `../facet`) picks the facet checkout;
-`scripts/polish` runs the result with `crush-run run -L <facet dir> --fs --fs-root / --env`
+Nothing is concatenated. `src/main.crush` imports `fmt`, `lexer` and `lint`, which resolve
+from `src/` (an importer's own directory comes first), and `import facet { facet_run, facet_fail }`.
+`__polish_*` helpers import like any other name. `FACET_DIR` (the directory holding
+`facet.crush`, default `../facet`) picks the facet checkout;
+`scripts/polish` runs `src/main.crush` with `crush-run run -L <facet dir> --fs --fs-root / --env`
 (needs a facet with required-positional support, facet >= 0.2.1; any path on the machine works; relative paths are taken from your working directory).
 
 ```
