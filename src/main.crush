@@ -1,3 +1,8 @@
+import facet { facet_run, facet_fail }
+import fmt { polish_format }
+import lexer { polish_lex }
+import lint { __polish_clen, __polish_finding, polish_lint }
+
 // polish CLI, built on facet.  polish fmt|lint|check FILE...
 
 fn __polish_flag(v) {

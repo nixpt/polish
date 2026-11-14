@@ -4,8 +4,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 CRUSH_RUN="${CRUSH_RUN:-crush-run}"
 mkdir -p build
-cat src/lexer.crush src/fmt.crush src/lint.crush tests/polish_test.crush > build/polish_test.crush
-"$CRUSH_RUN" run --fs --max-steps 4000000000 build/polish_test.crush < /dev/null 2> build/test.err | tee build/test.out
+# The self test imports polish's modules from src/ (no concatenation).
+"$CRUSH_RUN" run -L src --fs --max-steps 4000000000 tests/polish_test.crush < /dev/null 2> build/test.err | tee build/test.out
 rc=${PIPESTATUS[0]}
 [ -s build/test.err ] && grep -v '^\[steps=' build/test.err >&2
 fails=$(grep -c '^FAIL' build/test.out || true)

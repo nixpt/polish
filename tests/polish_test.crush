@@ -1,6 +1,11 @@
 // polish self test: lexer, formatter rules, idempotency, lints, golden files.
-// Built by scripts/test.sh: src/lexer + src/fmt + src/lint + this file.
-// Run from the repository root (goldens are read from tests/fmt).
+// Run by scripts/test.sh as `crush-run run -L src tests/polish_test.crush`
+// (the modules are imported, not concatenated). Run from the repository root
+// (goldens are read from tests/fmt).
+
+import fmt { polish_format }
+import lexer { polish_lex }
+import lint { polish_lint }
 
 fn check(name, cond) {
     if cond {

@@ -1,3 +1,5 @@
+import lexer { polish_lex }
+
 // polish lints (v0.1, token level). Each finding:
 //   { code, level, line, col, message, hint }
 
