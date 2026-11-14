@@ -1,0 +1,15 @@
+[capsule]
+name = "polish"
+version = "0.1.0"
+description = "Formatter and linter for Crush, written in Crush"
+entry = "src/main.crush"
+language = "crush"
+category = "dev-tool"
+platforms = ["linux", "macos"]
+
+[capabilities]
+required = ["env.get", "fs.exists", "fs.read", "fs.write"]
+
+[[dependencies]]
+name = "facet"
+path = "../facet"
