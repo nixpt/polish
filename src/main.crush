@@ -51,7 +51,7 @@ fn polish_lex_diag(r) {
 }
 
 // mode: "fmt" (rewrite), "fmt-check", "stdout", "lint", "check"
-fn polish_run(files, mode, mf) {
+pub fn polish_run(files, mode, mf) {
     let status = 0
     for f in files {
         let rd = polish_read(f, mf)

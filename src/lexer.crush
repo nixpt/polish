@@ -195,7 +195,7 @@ fn __polish_advance(cs, a, b, line, col) {
 // lex(src) -> { ok, toks, spans, err_line, err_col, err_msg }
 //   spans: [first_line, last_line] of every multi-line string / polyglot token
 //          (their inner newlines are data, not layout)
-fn polish_lex(src) {
+pub fn polish_lex(src) {
     let cs = str.split(src, "")
     let n = len(cs)
     let toks = []

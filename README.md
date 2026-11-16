@@ -20,7 +20,10 @@ scripts/polish check FILE...                      # fmt --check + lint
 
 Nothing is concatenated. `src/main.crush` imports `fmt`, `lexer` and `lint`, which resolve
 from `src/` (an importer's own directory comes first), and `import facet { facet_run, facet_fail }`.
-`__polish_*` helpers import like any other name. `FACET_DIR` (the directory holding
+Each module marks what it exports with `pub` (`polish_format`, `polish_lex`, `polish_lint`, `polish_run`);
+the `__polish_*` helpers have no `pub`, so they are private to `src/` (files in `src/` still import
+them from each other; `tests/` and other packages get the `pub` names only). Needs a toolchain with
+`pub` (crush-ast after 0.11.2). `FACET_DIR` (the directory holding
 `facet.crush`, default `../facet`) picks the facet checkout;
 `scripts/polish` runs `src/main.crush` with `crush-run run -L <facet dir> --fs --fs-root / --env`
 (needs a facet with required-positional support, facet >= 0.2.1; any path on the machine works; relative paths are taken from your working directory).

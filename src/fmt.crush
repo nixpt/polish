@@ -99,7 +99,7 @@ fn __polish_fail(tok, msg) {
 }
 
 // fmt(src) -> { ok, text, err_line, err_col, err_msg, code }
-fn polish_format(src) {
+pub fn polish_format(src) {
     let lx = polish_lex(src)
     if !lx.ok {
         return { ok: false, text: "", err_line: lx.err_line, err_col: lx.err_col, err_msg: lx.err_msg, code: "P-LEX" }
