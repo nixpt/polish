@@ -17,7 +17,7 @@ fn __polish_is_ws_char(ch) {
 }
 
 // polish_lint(src, lx) -> findings, in source order.  lx = polish_lex(src), ok.
-fn polish_lint(src, lx) {
+pub fn polish_lint(src, lx) {
     let found = []
     if src == "" { return found }
     let pieces = str.split(src, "\n")
