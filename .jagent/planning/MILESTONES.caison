@@ -1,0 +1,60 @@
+@caison { version: "1.0" }
+
+schema: "milestones/1"
+
+project: {
+  name: "polish"
+  kind: "repo"
+  lifecycle: "active" @verified { at: "2026-11-18", by: "altair" }
+  lifecycle_since: "2026-10-31"
+  home: "zorro"
+  ticket_prefix: "POLISH"
+  summary: "a Crush formatter and token linter written in Crush (fmt/lint/check v0.1), a crush-pkg package importing facet since 2026-11-14; no tag yet; visibility V2 pub sweep open as draft #6"
+  north_star: "the standard Crush formatter, self-hosted, shipped with the toolchain"
+  stewards: ["altair"]
+  evidence: {
+    default_branch: "main"
+  }
+}
+
+milestones: [
+  {
+    id: "P1"
+    title: "formatter + token lints v0.1"
+    status: "done" @verified { at: "2026-11-18", by: "altair" }
+    done_at: "2026-10-31"
+    tickets: ["POLISH-1"]
+    done_when: [
+      { claim: "POLISH-1 Done", check: { kind: "tickets", status: "Done" } },
+      { claim: "PR #1 merged", check: { kind: "merged", pr: "1" } },
+    ]
+  },
+  {
+    id: "P2"
+    title: "a real package: imports, facet dependency, capsule.toml"
+    status: "done" @verified { at: "2026-11-18", by: "altair" }
+    done_at: "2026-11-14"
+    done_when: [
+      { claim: "imports facet (PR #2)", check: { kind: "merged", pr: "2" } },
+      { claim: "imports its own modules (PR #4)", check: { kind: "merged", pr: "4" } },
+      { claim: "capsule.toml (PR #5)", check: { kind: "merged", pr: "5" } },
+    ]
+  },
+  {
+    id: "P3"
+    title: "visibility stage 2: exports marked pub"
+    status: "active" @verified { at: "2026-11-18", by: "altair" }
+    depends_on: ["crush-ast:VIS"]
+    done_when: [
+      { claim: "PR #6 merged", check: { kind: "merged", pr: "6" } },
+      "polish builds under crush-pkg build --deny-legacy-visibility",
+    ]
+    notes: "crush-ast#520 lists polish; draft #6 open"
+  },
+  {
+    id: "P4"
+    title: "first release"
+    status: "planned" @verified { at: "2026-11-18", by: "altair" }
+    done_when: [{ claim: "a release tag", check: { kind: "tag", pattern: "v*" } }]
+  },
+]
